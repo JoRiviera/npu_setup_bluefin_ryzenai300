@@ -290,6 +290,44 @@ Same for Node `openai`, `litellm`, `langchain.ChatOpenAI`, Continue.dev, Open We
 - `OPENAI_API_BASE=http://localhost:13305/api/v1`
 - `OPENAI_API_KEY=<anything>`
 
+### (BLUEFIN) Streaming tool-call compatibility — `npu-shim.mjs`
+
+**Known issue**: FastFlowLM (v0.9.43) emits the full streaming tool-call delta (`function.name` + `function.arguments`) in **one** SSE chunk. The OpenAI spec — and strict clients like Vercel `ai-sdk` (used by **opencode**, **continue.dev** ≥ recent versions, etc.) — expect those fields to arrive incrementally. The strict clients silently drop the tool call, which manifests as "the agent says nothing." Direct chat without tools is unaffected.
+
+This repo ships `npu-shim.mjs` — a small Node-stdlib proxy that sits in front of Lemonade and splits FLM's single-chunk tool_call into proper incremental deltas. All other traffic passes through untouched.
+
+Run it on the host:
+
+```bash
+node ~/path/to/this/repo/npu-shim.mjs
+# [shim] listening http://127.0.0.1:13306 → http://127.0.0.1:13305
+```
+
+Then point your client at `http://127.0.0.1:13306/v1` instead of `13305`. Background it with `nohup ... &` or wrap in a systemd-user unit if you want it on-boot.
+
+Stop with `pkill -f npu-shim.mjs`.
+
+Environment overrides (all optional):
+
+| Env var | Default | Purpose |
+|---|---|---|
+| `NPU_SHIM_LISTEN_HOST` | `127.0.0.1` | Bind address |
+| `NPU_SHIM_LISTEN_PORT` | `13306` | Listen port |
+| `NPU_SHIM_UPSTREAM_HOST` | `127.0.0.1` | Lemonade host |
+| `NPU_SHIM_UPSTREAM_PORT` | `13305` | Lemonade port |
+| `NPU_SHIM_VERBOSE` | `0` | Set `1` to log when SSE transform is active |
+
+Example opencode config using the shim — change one line in `~/.config/opencode/opencode.jsonc`:
+
+```jsonc
+"options": {
+  "apiKey": "lemonade",
+  "baseURL": "http://127.0.0.1:13306/v1"  // ← was 13305; now 13306 (via shim)
+}
+```
+
+Once the underlying FLM bug is fixed upstream, the shim becomes optional — point back at `13305` and remove the shim from your startup.
+
 ### (LEMONADE) Exposing the API on the LAN
 
 By default `lemond` binds `127.0.0.1` (loopback only). To listen on all interfaces:

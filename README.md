@@ -27,6 +27,7 @@ Install everything inside an **Ubuntu 24.04 distrobox** container that talks to 
 | Understanding the why | [`01-hardware-discovery.md`](./01-hardware-discovery.md) → [`02-current-stack-state.md`](./02-current-stack-state.md) → [`05-compatibility-matrix.md`](./05-compatibility-matrix.md) |
 | End state + benchmarks | [`06-final-summary.md`](./06-final-summary.md) |
 | What was changed on the host (and how to undo) | [`CHANGELOG.md`](./CHANGELOG.md) |
+| Fix for streaming tool-call clients (opencode, ai-sdk, …) | [`npu-shim.mjs`](./npu-shim.mjs) — see USER-GUIDE §3 |
 
 ## Quick install (recap)
 
