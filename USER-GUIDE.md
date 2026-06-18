@@ -77,37 +77,22 @@ You always start `lemond` first, then issue commands with `lemonade`.
 
 ---
 
-## 2. Models — load, list, pull, remove
+## 2. Models — list, pull, update, delete, hot-swap
 
 ### (LEMONADE) Catalog vs downloaded
 
 Lemonade ships a curated **catalog** of ~127 models. They appear in `lemonade list` with `Downloaded: No`. You need to `pull` one to use it.
 
-```bash
-# Browse catalog (filters by name)
-distrobox enter npu -- lemonade list                       # all 127
-distrobox enter npu -- lemonade list llama                 # case-insensitive filter
-distrobox enter npu -- lemonade list --downloaded          # only local
+### (LEMONADE / FLM) Two CLIs, one on-disk store
 
-# Pull (download)
-distrobox enter npu -- lemonade pull llama3.2-1b-FLM
+`lemonade` and `flm` are interchangeable for model ops — both read/write the same dir under `~/.config/flm/models/`. Use whichever name feels right. The catalog tag formats differ:
 
-# Run (loads model, opens web UI in browser by default)
-distrobox enter npu -- lemonade run llama3.2-1b-FLM
+- **FLM tag**: `llama3.2:1b` (colon-separated, short)
+- **Lemonade name**: `llama3.2-1b-FLM` (dash-separated, backend suffix)
 
-# Run with CLI chat instead of web UI
-distrobox enter npu -- lemonade run llama3.2-1b-FLM --chat-cli
+Same model, two names.
 
-# Standalone interactive chat (uses currently loaded model if no arg)
-distrobox enter npu -- lemonade chat llama3.2-1b-FLM
-
-# Remove model files
-distrobox enter npu -- lemonade pull --help    # see options
-```
-
-### (LEMONADE) Model naming convention
-
-Names tell you the backend at a glance:
+### Naming convention — what runs where
 
 | Suffix / pattern | Backend | Where it runs |
 |---|---|---|
@@ -118,36 +103,122 @@ Names tell you the backend at a glance:
 
 Only `-FLM` models hit the NPU on Linux.
 
-### (LEMONADE) See currently-installed NPU models
+### (LEMONADE) List
 
 ```bash
-distrobox enter npu -- lemonade list FLM --downloaded
+distrobox enter npu -- lemonade list                       # all 127
+distrobox enter npu -- lemonade list --downloaded          # only local
+distrobox enter npu -- lemonade list gemma                 # case-insensitive filter
+distrobox enter npu -- lemonade list FLM --downloaded      # local NPU models only
 ```
 
-After our setup the answer is:
-```
-llama3.2-1b-FLM    Yes    flm
-```
-
-### (LEMONADE) Pull a Hugging Face checkpoint directly (advanced)
+### (FLM) List
 
 ```bash
+distrobox enter npu -- flm list                   # NPU-only catalog
+distrobox enter npu -- flm list --filter installed
+distrobox enter npu -- flm list --quiet           # terse (script-friendly)
+```
+
+### Pull / install
+
+```bash
+# By Lemonade name
+distrobox enter npu -- lemonade pull llama3.2-1b-FLM
+
+# By FLM tag
+distrobox enter npu -- flm pull llama3.2:1b
+
+# Direct from a Hugging Face checkpoint (LEMONADE, advanced)
 distrobox enter npu -- lemonade pull org/repo:variant \
   --recipe flm \
   --checkpoint main org/repo:variant
 ```
 
-### (LEMONADE) Direct FLM CLI (bypasses Lemonade)
+### Update / re-download
+
+No dedicated `update` subcommand — models are versioned by tag, so a "newer" version usually means a different tag. To force-refresh corrupted or partial files of the **same** tag:
 
 ```bash
-distrobox enter npu -- flm list                   # NPU-only catalog
-distrobox enter npu -- flm pull llama3.2:1b
-distrobox enter npu -- flm run  llama3.2:1b       # interactive REPL
-distrobox enter npu -- flm serve llama3.2:1b      # FLM-native server (port 52625)
-distrobox enter npu -- flm validate               # health-check the NPU stack
+distrobox enter npu -- flm pull llama3.2:1b --force      # re-fetches all files
 ```
 
-The FLM catalog uses tags like `llama3.2:1b`; Lemonade's catalog re-exposes them as `llama3.2-1b-FLM`. Models you pull through `flm pull` are visible to Lemonade automatically and vice-versa (shared `~/.config/flm/models/`).
+To verify integrity without re-fetching:
+
+```bash
+distrobox enter npu -- flm check llama3.2:1b
+```
+
+### Delete
+
+```bash
+# By Lemonade name
+distrobox enter npu -- lemonade delete llama3.2-1b-FLM
+
+# By FLM tag
+distrobox enter npu -- flm remove llama3.2:1b
+```
+
+Both wipe the on-disk dir under `~/.config/flm/models/`. If you want to free space but keep the catalog entry valid, just `rm -rf` the model dir directly — `lemonade list` will then show it as not downloaded.
+
+### Disk-usage inspection
+
+```bash
+distrobox enter npu -- du -sh ~/.config/flm/models/*      # per-model sizes
+distrobox enter npu -- du -sh ~/.config/flm                # all NPU storage
+```
+
+Typical sizes:
+- Llama-3.2-1B-NPU2: **1.3 GB**
+- gemma3:4b: ~4 GB
+- gpt-oss:20b: ~20 GB
+
+System RAM cap on this box: ~24.5 GB usable for model weights (30.6 GB total).
+
+### Bulk reset (nuclear)
+
+```bash
+rm -rf ~/.config/flm/models/*       # delete all NPU models (host path, no container)
+rm -rf ~/.cache/lemonade/           # also delete CPU/Lemonade backend caches if any
+```
+
+Container itself is untouched — reinstall is just re-pulling tags.
+
+### Run / chat with a model
+
+```bash
+# Lemonade — opens web UI in browser
+distrobox enter npu -- lemonade run llama3.2-1b-FLM
+
+# Lemonade — CLI REPL instead of web UI
+distrobox enter npu -- lemonade run llama3.2-1b-FLM --chat-cli
+
+# Standalone CLI chat (uses currently-loaded model if no arg given)
+distrobox enter npu -- lemonade chat llama3.2-1b-FLM
+
+# FLM-native REPL
+distrobox enter npu -- flm run llama3.2:1b
+
+# FLM-native HTTP server (port 52625, separate from lemond on 13305)
+distrobox enter npu -- flm serve llama3.2:1b
+```
+
+### Hot-swap models in a running `lemond`
+
+The daemon evicts the loaded model when an API request specifies a different one — no restart needed:
+
+```bash
+# Switch mid-session by just naming a different model in the next request
+curl -X POST http://localhost:13305/api/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gemma3-4b-FLM","messages":[{"role":"user","content":"Hi"}]}'
+```
+
+By default only 1 model is resident at a time (`lemonade status` shows `Max Models/Type 1`). Pin a model to prevent eviction:
+
+```bash
+distrobox enter npu -- lemonade run gemma3-4b-FLM --pinned
+```
 
 ---
 
