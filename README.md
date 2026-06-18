@@ -28,6 +28,7 @@ Install everything inside an **Ubuntu 24.04 distrobox** container that talks to 
 | End state + benchmarks | [`06-final-summary.md`](./06-final-summary.md) |
 | What was changed on the host (and how to undo) | [`CHANGELOG.md`](./CHANGELOG.md) |
 | Fix for streaming tool-call clients (opencode, ai-sdk, …) | [`npu-shim.mjs`](./npu-shim.mjs) — see USER-GUIDE §3 |
+| Wiring an agentic client (opencode/Continue.dev/Aider) | [`07-agentic-clients.md`](./07-agentic-clients.md) — context-size fix + shim usage + opencode config |
 
 ## Quick install (recap)
 

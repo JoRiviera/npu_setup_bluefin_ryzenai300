@@ -2,7 +2,7 @@
 
 Every host-affecting change goes here. Every entry must include the **undo command**.
 
-So far: **no host changes**. Only files in `~/path/to/this/repo/` (this repo). All read-only commands run on host.
+So far: **no host changes**. Only files in this repo. All read-only commands run on host.
 
 ## Format
 
@@ -20,10 +20,10 @@ So far: **no host changes**. Only files in `~/path/to/this/repo/` (this repo). A
 **Change**: Wrote `01-hardware-discovery.md`, `02-current-stack-state.md`, `03-install-paths.md`, `04-revised-recommendation.md`, `05-compatibility-matrix.md`, this CHANGELOG, and tasks #1-#5 in TaskList.
 **Why**: Document what Bluefin already provides + plan install path.
 **Undo**: `rm -rf ~/path/to/this/repo/*.md` (only touches this dir)
-**Verify undo**: `ls ~/path/to/this/repo/` empty.
+**Verify undo**: directory listing is empty.
 
 ### 2026-06-18 — Created `npu` distrobox container (Ubuntu 24.04.4)
-**Change**: `distrobox create --name npu --image docker.io/library/ubuntu:24.04 --yes`. Pulled `8bf6fbc94074`. Container started, user account set up with sudo. Verified `/dev/accel/accel0` and `/dev/dri/renderD128` passed through automatically.
+**Change**: `distrobox create --name npu --image docker.io/library/ubuntu:24.04 --yes`. Pulled `8bf6fbc94074`. Container started, host user account set up with sudo. Verified `/dev/accel/accel0` and `/dev/dri/renderD128` passed through automatically.
 **Why**: Isolated env for AMD XRT + FLM + Lemonade install. Keeps host clean.
 **Undo**: `distrobox stop npu && distrobox rm npu --force`
 **Verify undo**: `distrobox list` shows no `npu`; `podman ps -a | grep npu` empty.
@@ -61,6 +61,13 @@ sudo rm /etc/systemd/system.conf.d/99-memlock.conf /etc/systemd/user.conf.d/99-m
 sudo systemctl reboot
 ```
 **Verify undo**: `systemctl show --property=DefaultLimitMEMLOCK` returns the kernel default (likely 8 MiB).
+
+### 2026-06-18 — Bumped Lemonade `ctx_size` to 32768 (container-internal)
+**Change**: Ran `distrobox enter npu -- lemonade config set ctx_size=32768`. Restarted `lemond` so the next model load picks up the new ctx. FLM is now started with `--ctx-len 32768` (verified in `/tmp/lemond.log`).
+**Why**: Lemonade's default `ctx_size=-1` resolves to 4096, which is too small for agentic clients (opencode, Continue.dev) whose system prompt + tool defs alone exceed 4 K. FLM was rejecting their requests with HTTP 400 in ~50 ms. See `07-agentic-clients.md`.
+**Scope**: Container-internal config (`~/.cache/lemonade/...` or similar inside container). No host-side change. Persists across `lemond` restarts but **not** across `distrobox rm npu`.
+**Undo**: `distrobox enter npu -- lemonade config set ctx_size=-1` then restart `lemond`.
+**Verify undo**: `distrobox enter npu -- lemonade config | grep ctx_size` shows `-1`.
 
 ### (Pending) — distrobox-export to ~/.local/bin
 If we want `lemonade`/`flm` callable from host shell without `distrobox enter npu --`. Reversible via `distrobox-export --bin ... --delete`.

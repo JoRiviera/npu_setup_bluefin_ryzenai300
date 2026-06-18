@@ -105,11 +105,25 @@ function isChatCompletions(url, method) {
   return method === 'POST' && /\/v1\/chat\/completions(\?|$)/.test(url);
 }
 
+let reqCounter = 0;
+
 const server = http.createServer((clientReq, clientRes) => {
+  const rid = ++reqCounter;
   const bodyChunks = [];
   clientReq.on('data', c => bodyChunks.push(c));
   clientReq.on('end', () => {
     const reqBody = Buffer.concat(bodyChunks);
+
+    if (VERBOSE) {
+      const bodyText = reqBody.toString('utf8');
+      console.error(`[shim req#${rid}] ${clientReq.method} ${clientReq.url}`);
+      if (bodyText) {
+        let pretty;
+        try { pretty = JSON.stringify(JSON.parse(bodyText), null, 2); }
+        catch { pretty = bodyText; }
+        console.error(`[shim req#${rid}] body: ${pretty.slice(0, 4000)}${pretty.length > 4000 ? ' …(truncated)' : ''}`);
+      }
+    }
 
     const headers = { ...clientReq.headers };
     delete headers['host'];
@@ -132,14 +146,31 @@ const server = http.createServer((clientReq, clientRes) => {
         const isSse = contentType.includes('text/event-stream');
         const shouldTransform = isSse && isChatCompletions(clientReq.url, clientReq.method);
 
+        if (VERBOSE) {
+          console.error(`[shim res#${rid}] status=${upRes.statusCode} content-type=${contentType} transform=${shouldTransform}`);
+        }
+
         if (!shouldTransform) {
-          upRes.pipe(clientRes);
+          if (VERBOSE && !isSse) {
+            const respChunks = [];
+            upRes.on('data', c => { respChunks.push(c); clientRes.write(c); });
+            upRes.on('end', () => {
+              const respText = Buffer.concat(respChunks).toString('utf8');
+              console.error(`[shim res#${rid}] body: ${respText.slice(0, 2000)}${respText.length > 2000 ? ' …(truncated)' : ''}`);
+              clientRes.end();
+            });
+            upRes.on('error', err => {
+              console.error(`[shim res#${rid}] upstream stream error: ${err.message}`);
+              clientRes.end();
+            });
+          } else {
+            upRes.pipe(clientRes);
+          }
           return;
         }
 
-        if (VERBOSE) console.error(`[shim] transforming SSE for ${clientReq.url}`);
-
         let buf = '';
+        let eventCounter = 0;
         upRes.setEncoding('utf8');
         upRes.on('data', chunk => {
           buf += chunk;
@@ -150,8 +181,12 @@ const server = http.createServer((clientReq, clientRes) => {
               clientRes.write('\n\n');
               continue;
             }
+            if (VERBOSE) {
+              console.error(`[shim res#${rid} event#${++eventCounter}] in : ${part.slice(0, 400)}${part.length > 400 ? ' …' : ''}`);
+            }
             const out = transformEvent(part);
             for (const ev of out) {
+              if (VERBOSE) console.error(`[shim res#${rid} event#${eventCounter}] out: ${ev.slice(0, 400)}${ev.length > 400 ? ' …' : ''}`);
               clientRes.write(ev + '\n\n');
             }
           }
@@ -163,17 +198,18 @@ const server = http.createServer((clientReq, clientRes) => {
               clientRes.write(ev + '\n\n');
             }
           }
+          if (VERBOSE) console.error(`[shim res#${rid}] stream ended (${eventCounter} events)`);
           clientRes.end();
         });
         upRes.on('error', err => {
-          console.error('[shim] upstream stream error:', err.message);
+          console.error(`[shim res#${rid}] upstream stream error: ${err.message}`);
           clientRes.end();
         });
       }
     );
 
     upReq.on('error', err => {
-      console.error('[shim] upstream connect error:', err.message);
+      console.error(`[shim req#${rid}] upstream connect error: ${err.message}`);
       clientRes.writeHead(502, { 'content-type': 'text/plain' });
       clientRes.end(`shim: upstream error: ${err.message}\n`);
     });
@@ -183,7 +219,7 @@ const server = http.createServer((clientReq, clientRes) => {
   });
 
   clientReq.on('error', err => {
-    console.error('[shim] client error:', err.message);
+    console.error(`[shim req#${rid}] client error: ${err.message}`);
   });
 });
 

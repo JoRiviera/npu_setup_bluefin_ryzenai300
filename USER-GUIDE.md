@@ -299,7 +299,7 @@ This repo ships `npu-shim.mjs` — a small Node-stdlib proxy that sits in front 
 Run it on the host:
 
 ```bash
-node ~/path/to/this/repo/npu-shim.mjs
+node /path/to/this/repo/npu-shim.mjs
 # [shim] listening http://127.0.0.1:13306 → http://127.0.0.1:13305
 ```
 
