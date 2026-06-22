@@ -23,7 +23,7 @@ Install everything inside an **Ubuntu 24.04 distrobox** container that talks to 
 |---|---|
 | First — quick orientation | this README |
 | Daily use | [`USER-GUIDE.md`](./USER-GUIDE.md) |
-| Reproducing the setup | [`03-install-paths.md`](./03-install-paths.md) + [`04-revised-recommendation.md`](./04-revised-recommendation.md) |
+| Reproducing the setup | [Reproduce (declarative)](#reproduce-declarative) — `Containerfile` + `distrobox.ini` + `Makefile`; reasoning in [`03-install-paths.md`](./03-install-paths.md) + [`04-revised-recommendation.md`](./04-revised-recommendation.md) |
 | Understanding the why | [`01-hardware-discovery.md`](./01-hardware-discovery.md) → [`02-current-stack-state.md`](./02-current-stack-state.md) → [`05-compatibility-matrix.md`](./05-compatibility-matrix.md) |
 | End state + benchmarks | [`06-final-summary.md`](./06-final-summary.md) |
 | What was changed on the host (and how to undo) | [`CHANGELOG.md`](./CHANGELOG.md) |
@@ -65,6 +65,30 @@ distrobox enter npu -- flm validate
 ```
 
 Then jump to [`USER-GUIDE.md`](./USER-GUIDE.md) for day-to-day usage.
+
+## Reproduce (declarative)
+
+The manual steps above are also packaged as pinned, reproducible artifacts so a fresh machine can rebuild the exact userspace stack:
+
+| File | Owns |
+|---|---|
+| [`Containerfile`](./Containerfile) | Pinned image: `ubuntu:24.04` + XRT `2.21.75` + Lemonade `10.8.0` + FastFlowLM `0.9.43` |
+| [`distrobox.ini`](./distrobox.ini) | Declarative `npu` container from that image (`distrobox assemble create`) |
+| [`setup-host.sh`](./setup-host.sh) | The one host mutation (memlock + reboot), reversible |
+| [`Makefile`](./Makefile) | Glue targets tying it all together |
+
+Fresh-machine path:
+
+```bash
+make host        # one-time host memlock fix, then: sudo systemctl reboot
+make image       # build the pinned userspace image
+make container   # create the `npu` distrobox from it
+make config      # set ctx_size=32768 (agentic-client fix)
+make models      # pull the FLM models (~10 GB total, runtime)
+make serve       # start the lemonade daemon
+```
+
+**Reproducibility boundary** — the `Containerfile` pins everything that *can* be pinned. It deliberately does **not** contain: the `amdxdna` driver (host kernel), `/dev/accel` + `/dev/dri` passthrough (distrobox runtime), the memlock fix (host systemd), or the models (pulled at first run). If the PPA later drops an exact pinned version, strip the `=<version>` suffix in the `Containerfile`.
 
 ## Try it
 
